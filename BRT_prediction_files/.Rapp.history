@@ -1,0 +1,81 @@
+files = list.files("TO_NAME_1")
+files
+i=1
+fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName,"_"))
+files = list.files("TO_NAME_1")
+fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))
+elements
+files[i]
+fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[1],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")
+fileName2
+fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")
+fileName2
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		cat(fileName2)#
+		# file.rename(paste0("TO_NAME_1/",fileName1),paste0("TO_NAME_1/",fileName2))#
+	}
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		cat(fileName2,"\n")#
+		# file.rename(paste0("TO_NAME_1/",fileName1),paste0("TO_NAME_1/",fileName2))#
+	}
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("AUC1.csv","AUCs.csv",gsub("CCV1","CCV",files[i])#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		cat(fileName2,"\n")#
+		# file.rename(paste0("TO_NAME_1/",fileName1),paste0("TO_NAME_1/",fileName2))#
+	}
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("AUC1.csv","AUCs.csv",gsub("CCV1","CCV",files[i]))#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		cat(fileName2,"\n")#
+		# file.rename(paste0("TO_NAME_1/",fileName1),paste0("TO_NAME_1/",fileName2))#
+	}
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("AUC1.csv","AUCs.csv",gsub("CCV1","CCV",files[i]))#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		# cat(fileName2,"\n")#
+		file.rename(paste0("TO_NAME_1/",fileName1),paste0("TO_NAME_1/",fileName2))#
+	}
+warnings()
+files = list.files("TO_NAME_1")#
+for (i in 1:length(files))#
+	{#
+		fileName1 = gsub("AUC1.csv","AUCs.csv",gsub("CCV1","CCV",files[i]))#
+		elements = unlist(strsplit(fileName1,"_"))#
+		fileName2 = paste(elements[1],elements[2],"1",sep="_")#
+		for (j in 3:length(elements)) fileName2 = paste(fileName2,elements[j],sep="_")#
+		# cat(fileName2,"\n")#
+		file.rename(paste0("TO_NAME_1/",files[i]),paste0("TO_NAME_1/",fileName2))#
+	}
