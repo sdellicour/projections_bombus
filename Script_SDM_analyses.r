@@ -1066,10 +1066,6 @@ for (i in 1:dim(species)[1])
 		rasters_toPlot[[i]] = buffer; rasters_types[[i]] = types
 		rasters_titles_1[[i]] = titles_1; rasters_titles_2[[i]] = titles_2
 		colsDiffI = colsDiff
-		if (i == 1)
-			{
-				colsDiffI = rev(colsDiff)
-			}
 		minV1 = 9999; maxV1 = -9999; minV2 = 9999; maxV2 = -9999
 		for (j in 1:length(rasters_toPlot[[i]]))
 			{
@@ -1084,6 +1080,7 @@ for (i in 1:dim(species)[1])
 						if (maxV2 < max(rasters_toPlot[[i]][[j]][],na.rm=T)) maxV2 = max(rasters_toPlot[[i]][[j]][],na.rm=T)
 					}
 			}
+		minV1 = 0; maxV1 = 1
 		if (abs(minV2) < abs(maxV2)) minV2 = -maxV2
 		if (abs(maxV2) < abs(minV2)) maxV2 = -minV2
 		pdf(paste0("All_the_figures_and_SI/All_the_species_projections/B_",species[i,"species"],"_projections.pdf"), width=14, height=6.3)
@@ -1092,7 +1089,7 @@ for (i in 1:dim(species)[1])
 			{
 				if (rasters_types[[i]][[j]] == "observations1")
 					{
-						plot(nullRasters[[1]], col="gray90", ann=F, legend=F, axes=F, box=F)
+						plot(nullRasters[[1]], col="#F2F4F4", ann=F, legend=F, axes=F, box=F)
 						plot(europe3, add=T, border="gray50", lwd=1.5)
 						points(observations_list[[1]][[i]], col="gray30", pch=3, cex=0.6, lwd=0.3)
 						mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
@@ -1100,7 +1097,7 @@ for (i in 1:dim(species)[1])
 					}
 				if (rasters_types[[i]][[j]] == "observations2")
 					{
-						plot(nullRasters[[2]], col="gray90", ann=F, legend=F, axes=F, box=F)
+						plot(nullRasters[[2]], col="#F2F4F4", ann=F, legend=F, axes=F, box=F)
 						plot(europe3, add=T, border="gray50", lwd=1.5)
 						points(observations_list[[2]][[i]], col="gray30", pch=3, cex=0.6, lwd=0.3)
 						mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
@@ -1215,10 +1212,6 @@ for (i in 1:length(rasters_ESI_SRI))
 		rasters_toPlot[[i]] = buffer; rasters_types[[i]] = types
 		rasters_titles_1[[i]] = titles_1; rasters_titles_2[[i]] = titles_2
 		colsDiffI = colsDiff
-		if (i == 1)
-			{
-				colsDiffI = rev(colsDiff)
-			}
 		minV1 = 9999; maxV1 = -9999; minV2 = 9999; maxV2 = -9999
 		for (j in 1:length(rasters_toPlot[[i]]))
 			{
