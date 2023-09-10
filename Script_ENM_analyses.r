@@ -40,7 +40,7 @@ directory = "Bombus_obs_160620"; savingPlots = FALSE
 timePeriods = c("1901_1974","2000_2014"); periods = list()
 periods[[1]] = c(1901,1974); periods[[2]] = c(2000,2014)
 species = read.csv("Bombus_species.csv", header=T)
-europe1 = shapefile("Continent_shapefile/Europe.shp")
+continents = shapefile("Continents_shapefile/Continents.shp")
 coastlines = shapefile("Continents_shapefile/Coastlines.shp")
 mask = raster("Mask_raster_file.nc4")
 
@@ -48,7 +48,8 @@ mask = raster("Mask_raster_file.nc4")
 
 	# 1.1. Preparation of the European shapefile that will be used as a mask
 
-polygons = list(); c = 0
+europe1 = subset(continents, continents$CONTINENT=="Europe")
+europe1 = crop(europe1, extent(-12,29,35,72)); polygons = list(); c = 0
 for (i in 1:length(europe1@polygons[[1]]@Polygons))
 	{
 		if (europe1@polygons[[1]]@Polygons[[i]]@area > 1)
@@ -58,6 +59,7 @@ for (i in 1:length(europe1@polygons[[1]]@Polygons))
 	}
 pols = Polygons(polygons, 1); pols_list = list(); pols_list[[1]] = pols
 europe2 = SpatialPolygons(pols_list); europe3 = gSimplify(europe2, 0.1)
+europe2@proj4string=europe1@proj4string; europe3@proj4string=europe1@proj4string
 
 	# 1.2. Loading the human population, temperature, precipitation, and land cover rasters
 
@@ -158,7 +160,8 @@ for (t in 1:length(periods))
 				for (i in 1:dim(species)[1])
 					{
 						plot(nullRasters[[t]], col="gray90", ann=F, legend=F, axes=F, box=F)
-						plot(coastlines, add=T, col="gray50", lwd=1.5)
+						plot(europe3, add=T, border="gray50", lwd=1.5)
+						# plot(coastlines, add=T, col="gray50", lwd=1.5)
 						points(observations[[i]], col="gray30", pch=3, cex=0.3, lwd=0.3)
 						mtext(paste0("B. ",species[i,1]), side=3, line=-2, at=0, cex=0.75, col="gray30")
 					}
@@ -883,6 +886,136 @@ if (savingPlots == TRUE)
 		dev.off()
 	}
 
+	# 9.3. Analysis of the phylogenetic signal associated with each environmental factor		
+
+newAnalyses = FALSE
+if (newAnalyses == TRUE)
+	{
+		relativeInfluences = read.csv("RI_BRT_2000-14.csv", header=T)
+		relativeInfluences = relativeInfluences[which(row.names(relativeInfluences)!="magnus"),]
+		names_Cameron = scan(paste0("MrBayes_analysis_SC/Bombus_MrBayes_1000post.trees"), what="", sep="\n", quiet=T)
+		names_Cameron = names_Cameron[(!grepl("tree rep.",names_Cameron))&(!grepl("end;",names_Cameron))]
+		names_Cameron = names_Cameron[5:length(names_Cameron)]; missing_species = c()
+		for (i in 1:length(names_Cameron))
+			{
+				names_Cameron[i] = unlist(strsplit(names_Cameron[i]," "))[length(unlist(strsplit(names_Cameron[i]," ")))]
+			}
+		names_Cameron = gsub(";","",gsub(",","",names_Cameron)); names_Cameron = names_Cameron[order(names_Cameron)]
+		for (i in 1:dim(species)[1])
+			{
+				if (!as.character(species[i,"species"])%in%names_Cameron)
+					{
+						missing_species = c(missing_species, as.character(species[i,"species"]))
+					}
+			}
+		trees1 = read.nexus("MrBayes_analysis_SC/Bombus_MrBayes_1000post.trees")
+		trees2 = list(); trees3 = list()
+		wd = getwd(); setwd(paste0(wd,"/PATHd8_program_files/"))
+		species_to_discard = names_Cameron[!names_Cameron%in%c(as.character(species[,"species"]),"Euglossa")]
+		for (i in 1:length(trees1))
+			{
+				trees2[[i]] = drop.tip(trees1[[i]], species_to_discard)
+				write.tree(trees2[[i]], paste0("Tree",i,"_a.tree"))
+				system(paste0("./PATHd8 Tree",i,"_a.tree Tree",i,"_b.tree"))
+				tree = scan(paste0("Tree",i,"_b.tree"), what="", sep="\n", quiet=T)
+				index = which(grepl("MPL tree",tree))
+				tree = gsub("MPL tree   : ","",tree[index])
+				write(tree, paste0("Tree",i,"_c.tree"))
+				tree3 = read.tree(paste0("Tree",i,"_c.tree"))
+				tree3 = multi2di(tree3, random=T) # to resolve polytomies
+				tree3$edge.length[tree3$edge.length==0] = 0.000001
+				trees3[[i]] = tree3
+			}
+		setwd(wd)
+		class(trees2) = "multiPhylo"; write.tree(trees2, "Bombus_1000_A.trees")
+		class(trees3) = "multiPhylo"; write.tree(trees3, "Bombus_1000_B.trees")
+			# To do in FigTree: open the two ".trees" files and export all trees in a Nexus format
+			# To do in TreeAnnotator: generate the maximum clade consensus (MCC) trees with "target heights"
+		mcc1 = read.nexus("Bombus_1000_B.tree")
+		mcc2 = multi2di(mcc1, random=T)
+		mcc2$edge.length[mcc2$edge.length==0] = 0.000001
+		write.tree(mcc2, "Bombus_1000_B.tree")
+			# To do in FigTree: open "Bombus_1000_A.tree" and remove the "Euglossa" outgroup
+			# To do in FigTree: open "Bombus_1000_B.tree" and export all trees in a Nexus format
+	}
+trees = read.nexus("Bombus_1000_A.trees"); i = 1
+if (!file.exists("BFs_phyloS_RI2.csv"))
+	{
+		BFs = matrix(nrow=dim(relativeInfluences)[2], ncol=1)
+		row.names(BFs) = colnames(relativeInfluences)
+		for (i in 1:dim(relativeInfluences)[2])
+			{
+				values = matrix(nrow=dim(relativeInfluences)[1], ncol=1)
+				values[,1] = as.numeric(relativeInfluences[,colnames(relativeInfluences)[i]])
+				row.names(values) = row.names(relativeInfluences); c = 0
+				K_values_obs = matrix(nrow=length(trees), ncol=1)
+				K_pValues_obs = matrix(nrow=length(trees), ncol=1)
+				K_values_ran = matrix(nrow=length(trees), ncol=1)
+				K_pValues_ran = matrix(nrow=length(trees), ncol=1)
+				for (j in 1:length(trees))
+					{
+						tree = drop.tip(trees[[j]], "Euglossa")
+						test1 = phytools::phylosig(tree, values, test=T, method="K")
+						K_values_obs[j,1] = test1$K; K_pValues_obs[j,1] = test1$P
+						buffer = values[sample(1:dim(values)[1],dim(values)[1],replace=F),]
+						randos = matrix(nrow=dim(relativeInfluences)[1], ncol=1)
+						randos[,1] = as.numeric(buffer); row.names(randos) = row.names(relativeInfluences)
+						test2 = phytools::phylosig(tree, randos, test=T, method="K")
+						K_values_ran[j,1] = test2$K; K_pValues_ran[j,1] = test2$P
+						if (K_values_obs[j,1] > K_values_ran[j,1]) c = c+1
+					}
+				p = c/length(trees); BF = p/(1-p); print(BF); BFs[i,1] = BF
+				if ((savingPlots == TRUE)&(i == 4))
+					{
+						pdf("All_the_figures_&_SI/Phylogenetic_signal_RI_1_NEW.pdf", width=6, height=2.5)
+						par(mfrow=c(1,1), mgp=c(1,0.35,0), oma=c(0.5,1,1,1.5), mar=c(2,2,0.5,0), lwd=0.2)
+						cols1 = list(); cols1[[1]] = rgb(204,0,0,255,maxColorValue=255); cols1[[2]] = rgb(120,120,120,255,maxColorValue=255)
+						cols2 = list(); cols2[[1]] = rgb(204,0,0,100,maxColorValue=255); cols2[[2]] = rgb(120,120,120,100,maxColorValue=255)
+						plot(density(K_values_ran), lwd=0.7, col=NA, lty=1, axes=F, ann=F, ylim=c(0,9), xlim=c(0,1.5))
+						polygon(density(K_values_ran), col=cols2[[2]], border=NA)
+						polygon(density(K_values_obs), col=cols2[[1]], border=NA)
+						lines(density(K_values_ran), lwd=0.7, col=cols1[[2]], lty=1)
+						lines(density(K_values_obs), lwd=0.7, col=cols1[[1]], lty=1)
+						axis(side=1, lwd.tick=0.2, cex.axis=0.6, mgp=c(0,-0.02,0), lwd=0.2, tck=-0.025, col.tick="gray30", col.axis="gray30", col="gray30")
+						axis(side=2, lwd.tick=0.2, cex.axis=0.6, mgp=c(0,0.25,0), lwd=0.2, tck=-0.025, col.tick="gray30", col.axis="gray30", col="gray30", at=seq(0,10,2))
+						title(xlab=expression(italic(K)), cex.lab=0.7, mgp=c(0.7,0,0), col.lab="gray30")
+						title(ylab="density", cex.lab=0.7, mgp=c(1.2,0,0), col.lab="gray30")
+						legend(x=1.1, y=4, legend=c("posterior distribution","null distribution"), lwd=0.7, cex=0.7, 
+							   col=c(unlist(cols1)), text.col=c(unlist(cols1)), border=NA, x.intersp=0.5, bty="n")
+						mtext(paste0("Non-forested primary land (BF = ",round(BF,1),")"), side=3, line=-0.68, at=0.34, cex=0.75, col="gray30")
+						dev.off()			
+						pdf("All_the_figures_&_SI/Phylogenetic_signal_RI_2_NEW.pdf", width=7, height=7.5)
+						par(oma=c(0,0,0,0), mar=c(0.8,1.2,0.5,2.2), lwd=0.2, col="gray30")
+						tree = read.nexus("Bombus_1000_A.tree")
+						colourScale = colorRampPalette(brewer.pal(9,"YlGn"))(101)
+						traits = matrix(nrow=length(tree$tip.label), ncol=1)
+						row.names(traits) = tree$tip.label; traits[,1] = values[row.names(traits),]
+						cols = colourScale[(((traits-min(traits))/(max(traits)-min(traits)))*100)+1]
+						tree$tip.label = paste0("     B. ",tree$tip.label)
+						plot(tree, show.tip.label=T, show.node.label=T, edge.width=0.5, cex=0.6, align.tip.label=3, col="gray30")
+						l1 = length(tree$tip.label)+1; l2 = (2*length(tree$tip.label))-2
+						for (i in 1:dim(tree$edge)[1])
+							{
+								if (!tree$edge[i,2]%in%tree$edge[,1])
+									{
+										nodelabels(node=tree$edge[i,2], pch=16, cex=1.2, col=cols[tree$edge[i,2]])
+										nodelabels(node=tree$edge[i,2], pch=1, cex=1.2, col="gray30", lwd=0.5)
+									}
+							}
+						mat = matrix(nrow=1, ncol=2); mat[1,1] = min(traits); mat[1,2] = max(traits); rast = raster(matrix(mat))
+						plot(rast, legend.only=T, add=T, col=colorRampPalette(brewer.pal(9,"YlGn"))(101), legend.width=0.5, alpha=1,
+							 legend.shrink=0.3, smallplot=c(0.11,0.12,0.10,0.45), legend.args=list(text="", cex=0.8, line=0.5, col.tick="gray30", col.axis="gray30", col="gray30"),
+							 axis.args=list(cex.axis=0.7, lwd=0, lwd.tick=0.2, tck=-0.5, line=0, mgp=c(0,0.4,0), at=seq(0,35,5),
+							 labels=c("0.00","0.05","0.10","0.15","0.20","0.25","0.30","0.35")))
+						add.scale.bar(length=NULL, ask=F, lwd=0.5, lcol="gray30", col="gray30", cex=0.7)
+						title1 = "Non-forested"; mtext(title1, side=3, line=-18.5, at=0.10, cex=0.75, font=1, col="gray30")
+						title2 = "primary land"; mtext(title2, side=3, line=-19.3, at=0.10, cex=0.75, font=1, col="gray30")				
+						dev.off()
+					}
+			}
+		colnames(BFs) = "BF"; write.csv(BFs, "BFs_phyloS_RI2.csv", quote=F)
+	}
+
 # 10. BRT projections based on past and present environmental variables
 
 predictions1a = list() # past projections based on past data, and present projections based on present data
@@ -946,7 +1079,7 @@ if (savingPlots == TRUE)
 					{
 						prediction = predictions1a[[i]][[t]]
 						plot(prediction, col=cols[1:(max(prediction[],na.rm=T)*100)], ann=F, legend=F, axes=F, box=F)
-						plot(coastlines, add=T, col="gray50", lwd=1.5)
+						plot(europe3, add=T, border="gray50", lwd=1.5)
 						mtext(paste0("B. ",species[i,1]), side=3, line=-2, at=0, cex=0.75, col="gray30")
 					}
 				dev.off()
@@ -1033,14 +1166,14 @@ if (savingPlots == TRUE)
 		if (abs(maxV2) < abs(minV2)) maxV2 = -minV2
 		legend1 = raster(as.matrix(c(0,maxV1))); legend2 = raster(as.matrix(c(minV2,maxV2)))
 		plot(bufferRaster1a, col=cols[1:((max(bufferRaster1a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("1901 - 1974", side=3, line=-1.5, cex=0.75, col="gray30", at=1.5)
 		mtext("ESI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
 		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
 			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
 			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
 		plot(bufferRaster2a, col=cols[1:((max(bufferRaster2a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("2000 - 2014", side=3, line=-1.5, cex=0.75, col="gray30", at=1.5)
 		mtext("ESI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
 		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
@@ -1049,7 +1182,7 @@ if (savingPlots == TRUE)
 		index1 = round(((min(bufferRaster3a[],na.rm=T)-minV2)/(maxV2-minV2))*100)
 		index2 = round(((max(bufferRaster3a[],na.rm=T)-minV2)/(maxV2-minV2))*100)
 		plot(bufferRaster3a, col=colsDiff[index1:index2], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("Difference", side=3, line=-1.5, cex=0.75, col="gray30", at=0)
 		mtext("ESI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
 		plot(legend2, col=colsDiff, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, smallplot=c(0.83,0.86,0.03,0.96), adj=3,
@@ -1062,14 +1195,14 @@ if (savingPlots == TRUE)
 		if (abs(maxV2) < abs(minV2)) maxV2 = -minV2
 		legend1 = raster(as.matrix(c(0,maxV1))); legend2 = raster(as.matrix(c(minV2,maxV2)))
 		plot(counterRaster1a, col=cols[1:((max(counterRaster1a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("1901 - 1974", side=3, line=-1.5, cex=0.75, col="gray30", at=1.5)
 		mtext("SRI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
 		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
 			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
 			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
 		plot(counterRaster2a, col=cols[1:((max(counterRaster2a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("2000 - 2014", side=3, line=-1.5, cex=0.75, col="gray30", at=1.5)
 		mtext("SRI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
 		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
@@ -1078,9 +1211,69 @@ if (savingPlots == TRUE)
 		index1 = round(((min(counterRaster3a[],na.rm=T)-minV2)/(maxV2-minV2))*100)
 		index2 = round(((max(counterRaster3a[],na.rm=T)-minV2)/(maxV2-minV2))*100)
 		plot(counterRaster3a, col=colsDiff[index1:index2], ann=F, legend=F, axes=F, box=F)
-		plot(coastlines, add=T, col="gray50", lwd=1.0)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
 		mtext("Difference", side=3, line=-1.5, cex=0.75, col="gray30", at=0)
 		mtext("SRI", side=3, line=-3.1, cex=1.0, col="gray30", at=-5)
+		plot(legend2, col=colsDiff, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, smallplot=c(0.83,0.86,0.03,0.96), adj=3,
+			 axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", col.axis="gray30", line=0, 
+			 mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)		
+		dev.off()
+		pdf(paste0("All_the_figures_&_SI/SRI_differences_past_t0.pdf"), width=10, height=2.0)
+		par(mfrow=c(1,6), oma=c(0,0,0,0), mar=c(0.1,0.75,0.1,2.5), lwd=0.4, col="gray30")
+		counterRaster3_1 = counterRaster1b; counterRaster3_1[] = counterRaster1b[]-counterRaster1a[]
+		counterRaster3_2 = counterRaster2b; counterRaster3_2[] = counterRaster2b[]-counterRaster2a[]
+		cols = rev(hcl.colors(100,palette="terrain2")[1:100])
+		colsDiff = colorRampPalette(brewer.pal(11,"RdBu"))(101)
+		minV1 = min(c(min(counterRaster1a[],na.rm=T),min(counterRaster2a[],na.rm=T),min(counterRaster1b[],na.rm=T),min(counterRaster2b[],na.rm=T)))
+		maxV1 = max(c(max(counterRaster1a[],na.rm=T),max(counterRaster2a[],na.rm=T),min(counterRaster1b[],na.rm=T),min(counterRaster2b[],na.rm=T)))
+		minV2 = min(c(min(counterRaster3_1 [],na.rm=T),min(counterRaster3_2[],na.rm=T)))
+		maxV2 = max(c(max(counterRaster3_1 [],na.rm=T),max(counterRaster3_2[],na.rm=T)))
+		if (abs(minV2) < abs(maxV2)) minV2 = -maxV2
+		if (abs(maxV2) < abs(minV2)) maxV2 = -minV2
+		legend1 = raster(as.matrix(c(0,maxV1))); legend2 = raster(as.matrix(c(minV2,maxV2)))
+		plot(counterRaster1a, col=cols[1:((max(counterRaster1a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("1901-74 models", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		mtext("1901-74 data", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
+		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
+			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
+			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
+		plot(counterRaster1b, col=cols[1:((max(counterRaster1b[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("1901-74 models", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		mtext("2000-14 data", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
+		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
+			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
+			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
+		index1 = round(((min(counterRaster3_1[],na.rm=T)-minV2)/(maxV2-minV2))*100)
+		index2 = round(((max(counterRaster3_1[],na.rm=T)-minV2)/(maxV2-minV2))*100)
+		plot(counterRaster3_1, col=colsDiff[index1:index2], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("Difference", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		# mtext("SRI", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
+		plot(legend2, col=colsDiff, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, smallplot=c(0.83,0.86,0.03,0.96), adj=3,
+			 axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", col.axis="gray30", line=0, 
+			 mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)		
+		plot(counterRaster2a, col=cols[1:((max(counterRaster2a[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("2000-14 models", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		mtext("2000-14 data", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
+		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
+			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
+			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
+		plot(counterRaster2b, col=cols[1:((max(counterRaster2b[],na.rm=T)/maxV1)*100)], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("2000-14 models", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		mtext("1901-74 data", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
+		plot(legend1, col=cols, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, 
+			 smallplot=c(0.83,0.86,0.03,0.96), adj=3, axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", 
+			 col.axis="gray30", line=0, mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)
+		index1 = round(((min(counterRaster3_2[],na.rm=T)-minV2)/(maxV2-minV2))*100)
+		index2 = round(((max(counterRaster3_2[],na.rm=T)-minV2)/(maxV2-minV2))*100)
+		plot(counterRaster3_2, col=colsDiff[index1:index2], ann=F, legend=F, axes=F, box=F)
+		plot(europe3, add=T, border="gray50", lwd=1.0)
+		mtext("Difference", side=3, line=-1.5, cex=0.60, col="gray30", at=1)
+		# mtext("SRI", side=3, line=-2.5, cex=0.60, col="gray30", at=1)
 		plot(legend2, col=colsDiff, legend.only=T, add=T, legend.width=0.5, legend.shrink=0.3, smallplot=c(0.83,0.86,0.03,0.96), adj=3,
 			 axis.args=list(cex.axis=0.9, lwd=0, lwd.tick=0.4, col.tick="gray30", tck=-0.8, col="gray30", col.axis="gray30", line=0, 
 			 mgp=c(0,0.5,0)), alpha=1, side=3, horizontal=F)		
@@ -1105,8 +1298,8 @@ for (y in 1:length(years))
 				for (m in 1:length(models))
 					{
 						files = list.files(paste0("Environmental_rasters/",scenarios[s],"/",models[m],"/"))
-						if (s != 1) files = files[grepl(year_intervals[y],files)]
-						files = files[!grepl("5min",files)]
+						# if (s != 1) files = files[grepl(year_intervals[y],files)] # ERROR detected on the 09:09:23 !!
+						files = files[grepl(year_intervals[y],files)]; files = files[!grepl("5min",files)]
 						index_population = which(grepl("population",files)); index_temperature = which(grepl("tas_day",files))
 						index_precipitation = which(grepl("pr_day",files)); index_land_cover = which(grepl("landcover",files))
 						population = raster(paste0("Environmental_rasters/",scenarios[s],"/",models[m],"/",files[index_population]))
@@ -1243,7 +1436,7 @@ if (savingPlots == TRUE)
 								index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 								index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 								plot(rasters_toPlot[[i]][[j]], col=cols[[i]][index1:index2], ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.8, at=0, cex=0.8, col="gray30")
 								rastLegend = raster(t(as.matrix(c(minV1,maxV1))))
@@ -1256,7 +1449,7 @@ if (savingPlots == TRUE)
 								index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 								index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 								plot(rasters_toPlot[[i]][[j]], col=colsDiffI[index1:index2], ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.6, at=0, cex=0.7, col="gray30")
 								rastLegend = raster(t(as.matrix(c(minV2,maxV2))))
@@ -1380,7 +1573,7 @@ for (i in 1:dim(species)[1])
 						if (rasters_types[[i]][[j]] == "observations1")
 							{
 								plot(nullRasters[[1]], col="#F2F4F4", ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								points(observations_list[[1]][[i]], col="gray30", pch=3, cex=0.6, lwd=0.3)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.8, at=0, cex=0.8, col="gray30")
@@ -1388,7 +1581,7 @@ for (i in 1:dim(species)[1])
 						if (rasters_types[[i]][[j]] == "observations2")
 							{
 								plot(nullRasters[[2]], col="#F2F4F4", ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								points(observations_list[[2]][[i]], col="gray30", pch=3, cex=0.6, lwd=0.3)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.8, at=0, cex=0.8, col="gray30")
@@ -1398,7 +1591,7 @@ for (i in 1:dim(species)[1])
 								index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 								index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 								plot(rasters_toPlot[[i]][[j]], col=cols[index1:index2], ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.8, at=0, cex=0.8, col="gray30")
 								rastLegend = raster(t(as.matrix(c(minV1,maxV1))))
@@ -1411,7 +1604,7 @@ for (i in 1:dim(species)[1])
 								index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 								index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 								plot(rasters_toPlot[[i]][[j]], col=colsDiffI[index1:index2], ann=F, legend=F, axes=F, box=F)
-								plot(coastlines, add=T, col="gray50", lwd=1.5)
+								plot(europe3, add=T, border="gray50", lwd=1.5)
 								mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 								mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.6, at=0, cex=0.7, col="gray30")
 								rastLegend = raster(t(as.matrix(c(minV2,maxV2))))
@@ -1609,7 +1802,7 @@ for (i in 1:length(rasters_ESI_SRI))
 						index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 						index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV1)/(maxV1-minV1))*100)
 						plot(rasters_toPlot[[i]][[j]], col=cols[index1:index2], ann=F, legend=F, axes=F, box=F)
-						plot(coastlines, add=T, col="gray50", lwd=1.5)
+						plot(europe3, add=T, border="gray50", lwd=1.5)
 						mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 						mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.8, at=0, cex=0.8, col="gray30")
 						rastLegend = raster(t(as.matrix(c(minV1,maxV1))))
@@ -1622,7 +1815,7 @@ for (i in 1:length(rasters_ESI_SRI))
 						index1 = round(((min(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 						index2 = round(((max(rasters_toPlot[[i]][[j]][],na.rm=T)-minV2)/(maxV2-minV2))*100)
 						plot(rasters_toPlot[[i]][[j]], col=colsDiffI[index1:index2], ann=F, legend=F, axes=F, box=F)
-						plot(coastlines, add=T, col="gray50", lwd=1.5)
+						plot(europe3, add=T, border="gray50", lwd=1.5)
 						mtext(rasters_titles_1[[i]][[j]], side=3, line=-1.5, at=0, cex=0.8, col="gray30")
 						mtext(rasters_titles_2[[i]][[j]], side=3, line=-2.6, at=0, cex=0.7, col="gray30")
 						rastLegend = raster(t(as.matrix(c(minV2,maxV2))))
@@ -1701,7 +1894,23 @@ if (savingPlots == TRUE)
 		dev.off()
 	}
 
+	# Linear regressions:
+
 relativeInfluences = read.csv("RI_BRT_2000-14.csv", header=T)
+
+df = data.frame(as.matrix(cbind(ESD_2070_SSP3_t0[,"ESD_2070_SSP3_t0"], relativeInfluences))); colnames(df)[1] = "ESD_2070_SSP3_t0"
+for (i in 1:dim(df)[2]) df[,i] = as.numeric(df[,i])
+lr = lm(as.formula("ESD_2070_SSP3_t0 ~ temperature + precipitation + primaryForest + primaryNonF + secondaryForest + secondaryNonF + croplands + pastures + population"),
+ 		data=df); summary(lr) # problem ??
+
+df = data.frame(as.matrix(cbind(ESD_2070_SSP3_t0[,"ESD_2070_SSP3_t0"], EVD_2070_SSP3_t0)))
+colnames(df) = c("ESD_2070_SSP3_t0","temperature","precipitation","primaryForest","primaryNonF","secondaryForest","secondaryNonF","croplands","pastures","population")
+for (i in 1:dim(df)[2]) df[,i] = as.numeric(df[,i])
+lr = lm(as.formula("ESD_2070_SSP3_t0 ~ temperature + precipitation + primaryForest + primaryNonF + secondaryForest + secondaryNonF + croplands + pastures + population"),
+ 		data=df); summary(lr)
+
+	# Spearman correlations:
+
 df = data.frame(as.matrix(cbind(ESD_2070_SSP3_t0[,"ESD_2070_SSP3_t0"], relativeInfluences))); colnames(df)[1] = "ESD_2070_SSP3_t0"
 for (i in 1:dim(df)[2]) df[,i] = as.numeric(df[,i])
 for (i in 2:dim(df)[2])
@@ -1732,46 +1941,52 @@ kruskal.test(y ~ x) # p-value = 0.762
 
 	# Computing the ESR values:
 
-ESR_comparison = matrix(nrow=dim(species)[1], ncol=length(scenarios))
-ESR_meanValues = matrix(nrow=dim(species)[1], ncol=length(scenarios))
+ESR_comparison = matrix(nrow=dim(species)[1], ncol=1+length(scenarios))
+ESR_meanValues = matrix(nrow=dim(species)[1], ncol=1+length(scenarios))
 row.names(ESR_comparison) = paste0("B. ",species[,1])
-colnames(ESR_comparison) = scenario_names
+colnames(ESR_comparison) = c("t0",scenario_names)
 row.names(ESR_meanValues) = paste0("B. ",species[,1])
-colnames(ESR_meanValues) = scenario_names
+colnames(ESR_meanValues) = c("t0",scenario_names)
 for (i in 1:dim(species)[1]) # ESR = "ecological suitability ratio"
 	{
+		txt = SIppcs[i,"optimisedThreshold_t1"]
+		cutOff1 = as.numeric(unlist(strsplit(txt," \\["))[1])
+		txt = SIppcs[i,"optimisedThreshold_t2"]
+		cutOff2 = as.numeric(unlist(strsplit(txt," \\["))[1])
+		r1 = predictions1[[i]][[1]]
+		r1[r1[]<cutOff1] = NA; s1 = sum(!is.na(r1[]))
+		r2 = predictions1[[i]][[2]]
+		r2[r2[]<cutOff2] = NA; s2 = sum(!is.na(r2[]))
+		ESR = s2/s1
+		ESR_comparison[i,1] = round(ESR,2)
+		ESR_meanValues[i,1] = ESR
 		txt = SIppcs[i,"optimisedThreshold_t2"]
 		cutOff = as.numeric(unlist(strsplit(txt," \\["))[1])
 		for (j in 1:length(scenarios))
 			{
 				r1 = predictions1[[i]][[2]]
 				r1[r1[]<cutOff] = NA; s1 = sum(!is.na(r1[]))
-				if (s1 != 0)
+				ESRs = rep(NA, length(models))
+				for (m in 1:length(models))
 					{
-						ESRs = rep(NA, length(models))
-						for (m in 1:length(models))
-							{
-								r2 = predictions1[[i]][[5]][[j]][[m]] # 2070
-								r2[r2[]<cutOff] = NA; s2 = sum(!is.na(r2[]))
-								ESRs[m] = s2/s1
-							}
-						meanV = round(mean(ESRs),2)
-						minV = round(min(ESRs),2)
-						maxV = round(max(ESRs),2)
-						ESR_comparison[i,j] = paste0(meanV," [",minV,"-",maxV,"]")
-						ESR_meanValues[i,j] = meanV
-					}	else	{
-						ESR_comparison[i,j] = mean(ESRs)
+						r2 = predictions1[[i]][[5]][[j]][[m]] # 2070
+						r2[r2[]<cutOff] = NA; s2 = sum(!is.na(r2[]))
+						ESRs[m] = s2/s1
 					}
+				meanV = round(mean(ESRs),2)
+				minV = round(min(ESRs),2)
+				maxV = round(max(ESRs),2)
+				ESR_comparison[i,1+j] = paste0(meanV," [",minV,"-",maxV,"]")
+				ESR_meanValues[i,1+j] = mean(ESRs)
 			}
 	}
 write.csv(ESR_comparison, "ESR_comparison.csv", quote=F)
 
 ESR_meanValues_LC = ESR_meanValues[which(species["IUCN_status"]=="least_concern"),]
-sum(ESR_meanValues_LC[,"SSP1"]<0.70)/dim(ESR_meanValues_LC)[1] # 32%
-sum(ESR_meanValues_LC[,"SSP3"]<0.70)/dim(ESR_meanValues_LC)[1] # 57%
-sum(ESR_meanValues_LC[,"SSP5"]<0.70)/dim(ESR_meanValues_LC)[1] # 76%
-sum(ESR_meanValues[,"SSP1"]<0.70)/dim(ESR_meanValues)[1] # 35%
-sum(ESR_meanValues[,"SSP3"]<0.70)/dim(ESR_meanValues)[1] # 57%
-sum(ESR_meanValues[,"SSP5"]<0.70)/dim(ESR_meanValues)[1] # 76%
+sum(ESR_meanValues_LC[,"SSP1"]<0.70)/dim(ESR_meanValues_LC)[1] # 37.8 %
+sum(ESR_meanValues_LC[,"SSP3"]<0.70)/dim(ESR_meanValues_LC)[1] # 56.8 %
+sum(ESR_meanValues_LC[,"SSP5"]<0.70)/dim(ESR_meanValues_LC)[1] # 75.7 %
+sum(ESR_meanValues[,"SSP1"]<0.70)/dim(ESR_meanValues)[1] # 43.5 %
+sum(ESR_meanValues[,"SSP3"]<0.70)/dim(ESR_meanValues)[1] # 56.5 %
+sum(ESR_meanValues[,"SSP5"]<0.70)/dim(ESR_meanValues)[1] # 78.3 %
 
